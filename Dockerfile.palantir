@@ -6,7 +6,12 @@
 # overlay + the palantir Python project.
 
 ARG NODE_VERSION=22.13.0
-ARG PYTHON_VERSION=3.11
+# Python 3.13 (not 3.14) because 3.14 currently lacks pre-built wheels for
+# some transitive deps (e.g. pyiceberg via supabase->storage3), which
+# would force source-builds and pull gcc into the builder stage. 3.13 has
+# mature wheel coverage and satisfies palantir/pyproject.toml's
+# requires-python = ">=3.10,<3.15".
+ARG PYTHON_VERSION=3.13
 
 # ─── Stage 1 ─ Build ui-v2 (palantir/ additions baked in automatically) ─
 FROM node:${NODE_VERSION}-bullseye-slim AS ui-builder
@@ -62,9 +67,16 @@ COPY --from=python-builder /opt/palantir/src  /opt/palantir/src
 # rsync's <prefect>/server/ui-v2/ into <prefect>/server/ui_v2_build/ on
 # every server boot (see src/prefect/server/api/server.py copy_directory),
 # so replacing the dash-named source dir is sufficient.
-# python3.11 is hard-coded to match the PYTHON_VERSION ARG above; update
-# both together if bumping the runtime Python.
-COPY --from=ui-builder /opt/ui-v2/dist /opt/palantir/.venv/lib/python3.11/site-packages/prefect/server/ui-v2
+#
+# Resolve Prefect's install path dynamically rather than hard-coding the
+# python minor — keeps the overlay correct if PYTHON_VERSION is bumped.
+# The symlink target /opt/palantir/ui-v2 becomes the addressable source
+# of truth, so future builds / debugging don't have to grep through
+# site-packages.
+COPY --from=ui-builder /opt/ui-v2/dist /opt/palantir/ui-v2
+RUN UI_DIR="$(python -c 'import pathlib, prefect; print(pathlib.Path(prefect.__file__).parent / "server" / "ui-v2")')" && \
+    rm -rf "$UI_DIR" && \
+    ln -s /opt/palantir/ui-v2 "$UI_DIR"
 
 LABEL org.opencontainers.image.title="palantir" \
       org.opencontainers.image.source="https://github.com/EGE-Products/ege-palantir"

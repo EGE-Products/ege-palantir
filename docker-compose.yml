@@ -30,7 +30,9 @@ services:
     environment:
       PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
       PREFECT_SERVER_API_HOST: 0.0.0.0
-      PREFECT_UI_API_URL: http://localhost:4200/api
+      # Browser-visible URL — must match the host-side port, otherwise
+      # the UI loads from :14200 but tries to call API on :4200.
+      PREFECT_UI_API_URL: http://localhost:${PREFECT_HOST_PORT:-4200}/api
     ports:
       # Override the host side with PREFECT_HOST_PORT if 4200 is taken.
       - "${PREFECT_HOST_PORT:-4200}:4200"
