@@ -388,6 +388,9 @@ ignore-words-list = [
     "medias",
     "falso",
     "aapply",
+    # Palantír fork: 'EGE' (the company) trips codespell's typo-of-'EDGE' rule.
+    # Case-insensitive — covers EGE / Ege / ege.
+    "ege",
 ]
 
 check-hidden = true
