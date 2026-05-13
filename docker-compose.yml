@@ -1,0 +1,74 @@
+# Palantír local dev stack: Postgres + Prefect server + Prefect worker.
+# `docker compose up` brings up a vanilla Prefect UI on http://localhost:4200
+# (no Palantír branding yet — that lands in EGE-209 → EGE-211).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: prefect
+      POSTGRES_DB: prefect
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prefect"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  prefect-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.palantir
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_UI_API_URL: http://localhost:4200/api
+    ports:
+      # Override the host side with PREFECT_HOST_PORT if 4200 is taken.
+      - "${PREFECT_HOST_PORT:-4200}:4200"
+    command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request as u; u.urlopen('http://localhost:4200/api/health').read()"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+  prefect-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.palantir
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+    volumes:
+      # Hot-reload palantir flow code without rebuilding the image. The
+      # image still bakes in a copy of src/ at /opt/palantir/src for prod;
+      # this bind mount overrides it for dev.
+      - ./palantir/src:/opt/palantir/src
+    # || true makes the pool-create idempotent across compose restarts.
+    command:
+      - sh
+      - -c
+      - >-
+        prefect work-pool create --type process palantir-default || true &&
+        prefect worker start --pool palantir-default
+    restart: on-failure
+
+volumes:
+  postgres_data:
