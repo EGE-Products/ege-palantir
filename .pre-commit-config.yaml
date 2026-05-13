@@ -87,3 +87,48 @@ repos:
         pass_filenames: false
         stages:
           - pre-push
+
+      # --- Palantír (EGE-additive) ----------------------------------------
+      # Scoped to palantir/ diffs. Uses the subproject's own uv venv so tool
+      # versions stay pinned to palantir/pyproject.toml independent of the
+      # upstream Prefect lockfile.
+      - id: palantir-ruff
+        name: palantir — ruff check + format
+        language: system
+        entry: sh
+        args:
+          [
+            "-c",
+            "cd palantir && uv run ruff check --fix --exit-non-zero-on-fix --show-fixes && uv run ruff format",
+          ]
+        files: |
+          (?x)^(
+              palantir/.*\.py|
+              palantir/pyproject\.toml
+          )$
+        pass_filenames: false
+      - id: palantir-mypy
+        name: palantir — mypy
+        language: system
+        entry: sh
+        args: ["-c", "cd palantir && uv run mypy"]
+        files: |
+          (?x)^(
+              palantir/.*\.py|
+              palantir/pyproject\.toml
+          )$
+        pass_filenames: false
+      - id: palantir-pytest
+        name: palantir — pytest
+        language: system
+        entry: sh
+        args: ["-c", "cd palantir && uv run pytest"]
+        files: |
+          (?x)^(
+              palantir/.*\.py|
+              palantir/pyproject\.toml|
+              palantir/uv\.lock
+          )$
+        pass_filenames: false
+        stages:
+          - pre-push
