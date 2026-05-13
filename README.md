@@ -1,58 +1,156 @@
-# Palantír
+<p align="center"><img src="https://github.com/PrefectHQ/prefect/assets/3407835/c654cbc6-63e8-4ada-a92a-efd2f8f24b85" width=1000></p>
 
-A seeing stone: "that which looks far away." The ETL pipeline app that connects all data sources and apps.
+<p align="center">
+    <a href="https://pypi.org/project/prefect/" alt="PyPI version">
+        <img alt="PyPI" src="https://img.shields.io/pypi/v/prefect?color=0052FF&labelColor=090422" />
+    </a>
+    <a href="https://pypi.org/project/prefect/" alt="PyPI downloads/month">
+        <img alt="Downloads" src="https://img.shields.io/pypi/dm/prefect?color=0052FF&labelColor=090422" />
+    </a>
+    <a href="https://github.com/prefecthq/prefect/" alt="Stars">
+        <img src="https://img.shields.io/github/stars/prefecthq/prefect?color=0052FF&labelColor=090422" />
+    </a>
+    <a href="https://github.com/prefecthq/prefect/pulse" alt="Activity">
+        <img src="https://img.shields.io/github/commit-activity/m/prefecthq/prefect?color=0052FF&labelColor=090422" />
+    </a>
+    <br>
+    <a href="https://prefect.io/slack" alt="Slack">
+        <img src="https://img.shields.io/badge/slack-join_community-red.svg?color=0052FF&labelColor=090422&logo=slack" />
+    </a>
+    <a href="https://www.youtube.com/c/PrefectIO/" alt="YouTube">
+        <img src="https://img.shields.io/badge/youtube-watch_videos-red.svg?color=0052FF&labelColor=090422&logo=youtube" />
+    </a>
+</p>
 
-## v0.1 scope — EGE Products only
 
-**v0.1 ingests EGE Products sales data only.** Every row written by `ingest_qb_sales` carries `company_id = 'ege'`.
+<p align="center">
+    <a href="https://docs.prefect.io/v3/get-started/index?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none">
+        Installation
+    </a>
+    ·
+    <a href="https://docs.prefect.io/v3/get-started/quickstart?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none">
+        Quickstart
+    </a>
+    ·
+    <a href="https://docs.prefect.io/v3/how-to-guides/workflows/write-and-run?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none">
+        Build workflows
+    </a>
+    ·
+    <a href="https://docs.prefect.io/v3/concepts/deployments?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none">
+        Deploy workflows
+    </a>
+    ·
+    <a href="https://app.prefect.cloud/?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none">
+        Prefect Cloud
+    </a>
+</p>
 
-HCH Trucking and Runnin6 Farms are **out of scope for v0.1** and are not sales operations in the same shape as EGE Products:
+# Prefect
 
-- **HCH Trucking** ships goods for hire (loads / shipments / rates), not ag-chem product sales.
-- **Runnin6 Farms** grows crops (fields / inputs / harvests), not ag-chem product sales.
+Prefect is a workflow orchestration framework for building data pipelines in Python.
+It's the simplest way to elevate a script into a production workflow.
+With Prefect, you can build resilient, dynamic data pipelines that react to the world around them and recover from unexpected changes.
 
-Neither has a "customers buying ag-chem products" entity matching the QuickBooks *Sales by Item Detail* report shape that drives v0.1, so they don't fit the same connector or domain model. Their ingest pipelines are **Phase 3+** work with different connector shapes, different domain entities, and likely different Red Book tables.
+With just a few lines of code, data teams can confidently automate any data process with features such as scheduling, caching, retries, and event-based automations.
 
-### Multi-company architecture without multi-company code
+Workflow activity is tracked and can be monitored with a self-hosted [Prefect server](https://docs.prefect.io/latest/manage/self-host/?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none) instance or managed [Prefect Cloud](https://www.prefect.io/cloud-vs-oss?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none) dashboard.
 
-The Red Book DDL keeps `company_id text NOT NULL` on every transactional table — structural forward-compatibility that costs nothing today and avoids an `ALTER TABLE` migration when HCH/Runnin6 ingest arrives. The **code**, by contrast, is explicitly single-company at v0.1.
+> [!TIP]
+> Prefect flows can handle retries, dependencies, and even complex branching logic
+> 
+> [Check our docs](https://docs.prefect.io/v3/get-started/index?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none) or see the example below to learn more!
 
-| Layer            | v0.1 shape                                                            | Why                                                              |
-| ---------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| DDL              | `company_id text NOT NULL` on every transactional table               | Forward-compat; no migration when Phase 3+ tenants land          |
-| Raw models       | **No** `company_id` field — raw QB rows carry no tenant identity       | Tenant identity is a property of the *load*, not of the source row |
-| Normalized models| `company_id: str` field, set during transform                         | First place tenant identity is materialized                       |
-| Flow             | `ingest_qb_sales(xlsx_path: str)` — `company_id = 'ege'` hardcoded     | Explicit single-tenant; parameterize when a second caller exists |
+## Getting started
 
-### Slug convention
+Prefect requires Python 3.10+. To [install the latest version of Prefect](https://docs.prefect.io/v3/get-started/install), run one of the following commands:
 
-The canonical `company_id` slug for EGE Products is `'ege'` (lowercase, no spaces, no punctuation). Future tenants will follow the same kebab-case pattern (e.g. `'hch'`, `'runnin6'`).
-
-### Flow signature decision
-
-The v0.1 flow signature is **Option A**:
-
-```python
-@flow
-def ingest_qb_sales(xlsx_path: str) -> dict:
-    company_id = "ege"  # TODO: parameterize when HCH/Runnin6 flows land
-    ...
+```bash
+pip install -U prefect
 ```
 
-This is preferred over the forward-compatible-but-unused `company_id: str = 'ege'` default parameter (Option B) because:
+```bash
+uv add prefect
+```
 
-- The function genuinely handles **only** EGE-shaped input at v0.1 — passing `'hch'` would not produce a working HCH ingest, it would just mislabel EGE data.
-- A signature parameter promises polymorphism the function does not deliver.
-- The TODO is a clear, greppable signal for the future migration point.
+Then create and run a Python file that uses Prefect `flow` and `task` decorators to orchestrate and observe your workflow - in this case, a simple script that fetches the number of GitHub stars from a repository:
 
-When the second caller actually exists (Phase 3+), the signature changes alongside the actual generalization work — not as a speculative gesture today.
+```python
+from prefect import flow, task
+import httpx
 
-### Roadmap pointer
 
-Designing HCH Trucking and Runnin6 Farms ingest is its own track — each will need domain modeling, not just a parameter swap. Expect separate v0.2+/Phase-3 tickets: *Design HCH Trucking ingest pipeline* and *Design Runnin6 Farms ingest pipeline*.
+@task(log_prints=True)
+def get_stars(repo: str):
+    url = f"https://api.github.com/repos/{repo}"
+    count = httpx.get(url).json()["stargazers_count"]
+    print(f"{repo} has {count} stars!")
 
-## References
 
-- Phase 1 DDL §4.4 Stage 1 precondition (revised)
-- TDD §7.4 `connectors/qb_xlsx`
-- Linear: [EGE-198](https://linear.app/ege-bio/issue/EGE-198) (this scope doc), [EGE-220](https://linear.app/ege-bio/issue/EGE-220) (raw models), [EGE-231](https://linear.app/ege-bio/issue/EGE-231) (flow)
+@flow(name="GitHub Stars")
+def github_stars(repos: list[str]):
+    for repo in repos:
+        get_stars(repo)
+
+
+# run the flow!
+if __name__ == "__main__":
+    github_stars(["PrefectHQ/prefect"])
+```
+
+Fire up a Prefect server and open the UI at http://localhost:4200 to see what happened:
+
+```bash
+prefect server start
+```
+
+To run your workflow on a schedule, turn it into a deployment and schedule it to run every minute by changing the last line of your script to the following:
+
+```python
+if __name__ == "__main__":
+    github_stars.serve(
+        name="first-deployment",
+        cron="* * * * *",
+        parameters={"repos": ["PrefectHQ/prefect"]}
+    )
+```
+
+You now have a process running locally that is looking for scheduled deployments!
+Additionally you can run your workflow manually from the UI or CLI. You can even run deployments in response to [events](https://docs.prefect.io/latest/automate/?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none).
+
+> [!TIP]
+> Where to go next - check out our [documentation](https://docs.prefect.io/v3/get-started/index?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none) to learn more about:
+> - [Deploying flows to production environments](https://docs.prefect.io/v3/deploy?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none)
+> - [Adding error handling and retries](https://docs.prefect.io/v3/develop/write-tasks#retries?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none)
+> - [Integrating with your existing tools](https://docs.prefect.io/integrations/integrations?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none)
+> - [Setting up team collaboration features](https://docs.prefect.io/v3/manage/cloud/manage-users/manage-teams#manage-teams?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none)
+
+
+## Prefect Cloud
+
+Prefect Cloud provides workflow orchestration for the modern data enterprise. By automating over 200 million data tasks monthly, Prefect empowers diverse organizations — from Fortune 50 leaders such as Progressive Insurance to innovative disruptors such as Cash App — to increase engineering productivity, reduce pipeline errors, and cut data workflow compute costs.
+
+Read more about Prefect Cloud [here](https://www.prefect.io/cloud-vs-oss?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none) or sign up to [try it for yourself](https://app.prefect.cloud?utm_source=oss&utm_medium=oss&utm_campaign=oss_gh_repo&utm_term=none&utm_content=none).
+
+## prefect-client
+
+If your use case is geared towards communicating with Prefect Cloud or a remote Prefect server, check out our
+[prefect-client](https://pypi.org/project/prefect-client/). It is a lighter-weight option for accessing client-side functionality in the Prefect SDK and is ideal for use in ephemeral execution environments.
+
+## Connect & Contribute
+Join a thriving community of over 25,000 practitioners who solve data challenges with Prefect. Prefect's community is built on collaboration, technical innovation, and continuous improvement.
+
+### Community Resources
+🌐 **[Explore the Documentation](https://docs.prefect.io)** - Comprehensive guides and API references  
+💬 **[Join the Slack Community](https://prefect.io/slack)** - Connect with thousands of practitioners  
+🤝 **[Contribute to Prefect](https://docs.prefect.io/contribute/)** - Help shape the future of the project  
+ 🔌 **[Support or create a new Prefect integration](https://docs.prefect.io/contribute/contribute-integrations)** - Extend Prefect's capabilities   
+📋 **[Tail the Dev Log](https://dev-log.prefect.io/)** - Prefect's open source development blog
+
+### Stay Informed
+📥 **[Subscribe to our Newsletter](https://prefect.io/newsletter)** - Get the latest Prefect news and updates  
+📣 **[X](https://x.com/PrefectIO)** and **[Bluesky](https://bsky.app/profile/prefect.io)** - Latest updates and announcements  
+📺 **[YouTube](https://www.youtube.com/@PrefectIO)** - Video tutorials and webinars  
+📱 **[LinkedIn](https://www.linkedin.com/company/prefect)** - Professional networking and company news  
+
+Your contributions, questions, and ideas make Prefect better every day. Whether you're reporting bugs, suggesting features, or improving documentation, your input is invaluable to the Prefect community.
+
