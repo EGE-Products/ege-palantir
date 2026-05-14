@@ -1,8 +1,18 @@
+# ┌─ Palantír fork note ───────────────────────────────────────────────┐
+# │ EGE EDIT — keep on upstream merges. Every ecosystem below targets   │
+# │ upstream-owned files (/, /ui-v2/). Dependabot polls PyPI/npm, NOT   │
+# │ upstream Prefect, so its version-update PRs DIVERGE us from the     │
+# │ fork. We mirror upstream via the weekly rebase instead.             │
+# │                                                                     │
+# │ open-pull-requests-limit: 0 disables *version-update* PRs while     │
+# │ still allowing *security-update* PRs (real CVEs). Do not remove.    │
+# └─────────────────────────────────────────────────────────────────────┘
 version: 2
 enable-beta-ecosystems: true
 updates:
   - package-ecosystem: "pip"
     directory: "/"
+    open-pull-requests-limit: 0  # EGE: see fork note above
     schedule:
       interval: "weekly"
     labels: ["development"]
@@ -13,6 +23,7 @@ updates:
   
   - package-ecosystem: "npm"
     directory: '/ui-v2/'
+    open-pull-requests-limit: 0  # EGE: see fork note above
     schedule:
       interval: "weekly"
     labels: ["ui-replatform", "ui-v2-dependency"]
@@ -33,19 +44,22 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    open-pull-requests-limit: 0  # EGE: see fork note above
     schedule:
       interval: "daily"
     labels: ["development"]
 
   - package-ecosystem: "docker"
     directory: "/"
+    open-pull-requests-limit: 0  # EGE: see fork note above
     schedule:
       interval: "daily"
     labels: ["development"]
 
   # update uv.lock file
-  - package-ecosystem: "uv" 
+  - package-ecosystem: "uv"
     directory: "/" # Location of package manifests
+    open-pull-requests-limit: 0  # EGE: see fork note above
     schedule:
       interval: "weekly"
     labels: ["development"]
