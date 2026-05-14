@@ -12,8 +12,16 @@
 #   This script is the version-controlled *record* of what we turned off and
 #   why — but it operates on out-of-repo state.
 #
-# IDEMPOTENT: re-running is safe. Run it again after any upstream rebase that
-# introduces new workflows (see the "audit" hint at the bottom).
+# IDEMPOTENT: re-running is safe — workflows already disabled are detected
+#   from the fetched state and skipped.
+#
+# FAIL-FAST: this script hardens a fork, so a silent false success is the
+#   worst outcome. It aborts (non-zero exit) on:
+#     - any auth/network/API error (caught by the single `gh workflow list`)
+#     - any target that fails to disable while reported active
+#     - any target "missing" from .github/workflows/ — an upstream rebase may
+#       have RENAMED it, leaving the renamed release/publish workflow silently
+#       ACTIVE. That must be reconciled by a human, not shrugged off.
 #
 # Requires: gh CLI authenticated against EGE-Products/ege-palantir.
 
@@ -65,18 +73,68 @@ ALL=(
   "${BOT_WORKFLOWS[@]}"
 )
 
-echo "Disabling ${#ALL[@]} inherited upstream workflows..."
+# ── Fetch current state in ONE call ───────────────────────────────────────
+# This is also the auth/network canary: if gh can't reach the API we find
+# out HERE and abort, instead of silently "skipping" every target in the loop.
+echo "Fetching current workflow state..."
+if ! state_table="$(gh workflow list --all --json path,state \
+      --jq '.[] | "\(.path)\t\(.state)"')"; then
+  echo "ERROR: 'gh workflow list' failed — check 'gh auth status' and network." >&2
+  exit 1
+fi
+
+disabled=0
+already=0
+missing=0
+missing_names=()
+
 for wf in "${ALL[@]}"; do
-  if gh workflow disable "$wf" 2>/dev/null; then
-    echo "  disabled: $wf"
-  else
-    # Already disabled, or the file no longer exists after an upstream rebase.
-    echo "  skipped:  $wf (already disabled or not found)"
+  # Resolve this workflow's state by matching its full path. The
+  # ".github/workflows/" prefix + trailing tab anchor the match so a short
+  # name (release.yaml) can't accidentally match a longer one
+  # (nightly-release.yaml).
+  line="$(grep -F ".github/workflows/${wf}"$'\t' <<<"$state_table" || true)"
+  state="${line##*$'\t'}"
+
+  if [[ -z "$state" ]]; then
+    echo "  MISSING:  $wf — not found in .github/workflows/" >&2
+    missing=$((missing + 1))
+    missing_names+=("$wf")
+    continue
   fi
+
+  if [[ "$state" == disabled_* ]]; then
+    echo "  already:  $wf"
+    already=$((already + 1))
+    continue
+  fi
+
+  # state == "active" — disable it. A non-zero here is a REAL failure
+  # (auth lost mid-run, API error); do NOT swallow it.
+  if ! gh workflow disable "$wf"; then
+    echo "ERROR: failed to disable active workflow '$wf'." >&2
+    echo "       Re-run after resolving — already-disabled targets are skipped." >&2
+    exit 1
+  fi
+  echo "  disabled: $wf"
+  disabled=$((disabled + 1))
 done
 
 echo
-echo "Done. To see the full current state:    gh workflow list --all"
-echo "After an upstream rebase, audit for new workflows:"
-echo "  comm -13 <(printf '%s\\n' \"\${ALL[@]}\" | sort) \\"
-echo "           <(ls .github/workflows/*.y*ml | xargs -n1 basename | sort)"
+echo "Summary: ${disabled} newly disabled, ${already} already disabled, ${missing} missing."
+
+if (( missing > 0 )); then
+  {
+    echo
+    echo "ERROR: ${missing} target(s) not found in .github/workflows/:"
+    printf '  - %s\n' "${missing_names[@]}"
+    echo
+    echo "An upstream rebase likely RENAMED them — the renamed release/publish"
+    echo "workflow could now be silently ACTIVE. Reconcile this script's lists"
+    echo "against the current tree, then re-run. Current workflow files:"
+    echo "  ls .github/workflows/*.y*ml | xargs -n1 basename | sort"
+  } >&2
+  exit 1
+fi
+
+echo "All ${#ALL[@]} target workflows are disabled."
